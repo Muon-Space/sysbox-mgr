@@ -282,8 +282,16 @@ func newSysboxMgr(ctx *cli.Context) (*SysboxMgr, error) {
 		logrus.Info("System container mode enabled.")
 	}
 
+	// When --disable-binfmt-misc-mount is set, skip the auto-mount entirely.
+	// The kernel's load_binfmt_misc then walks the user-namespace parent
+	// chain and falls back to the host's binfmt_misc registrations (kernel
+	// >= 6.7). This is required on Kubernetes 1.33+ with hostUsers:false,
+	// where containerd's pause container creates the per-userns binfmt_misc
+	// instance with Root.Readonly=true — making the auto-mounted instance
+	// read-only AND shadowing the host's QEMU handlers, breaking cross-arch
+	// emulation inside the pod.
 	mountBinfmtMisc := false
-	if syscontMode {
+	if syscontMode && !ctx.GlobalBool("disable-binfmt-misc-mount") {
 		binfmtMiscPresent, err := linuxUtils.KernelModSupported("binfmt_misc")
 		if err != nil {
 			return nil, fmt.Errorf("binfmt_misc kernel module check failed: %v", err)

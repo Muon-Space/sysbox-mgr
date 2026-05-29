@@ -150,6 +150,10 @@ func main() {
 			Name:  "fsuid-map-fail-on-error",
 			Usage: "When set to true, fail to launch a container whenever filesystem uid-mapping (needed for files to show proper ownership inside the container's user-namespace) hits an error; when set to false, launch the container anyway (files may show up owned by nobody:nogroup) (default = false).",
 		},
+		cli.BoolFlag{
+			Name:  "disable-binfmt-misc-mount",
+			Usage: "Do not auto-mount binfmt_misc inside containers. With this set, the kernel's load_binfmt_misc walks the user-namespace parent chain and inherits the host's binfmt_misc registrations (kernel >= 6.7). Useful on Kubernetes 1.33+ with hostUsers:false, where the per-userns binfmt_misc mount is read-only (containerd's pause container has Root.Readonly=true) and the auto-mounted instance shadows the host's registrations — breaking QEMU cross-arch emulation inside the pod. (default = false)",
+		},
 	}
 
 	// show-version specialization.
