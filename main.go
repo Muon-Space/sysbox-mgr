@@ -152,7 +152,11 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:  "disable-binfmt-misc-mount",
-			Usage: "Do not auto-mount binfmt_misc inside containers. With this set, the kernel's load_binfmt_misc walks the user-namespace parent chain and inherits the host's binfmt_misc registrations (kernel >= 6.7). Useful on Kubernetes 1.33+ with hostUsers:false, where the per-userns binfmt_misc mount is read-only (containerd's pause container has Root.Readonly=true) and the auto-mounted instance shadows the host's registrations — breaking QEMU cross-arch emulation inside the pod. (default = false)",
+			Usage: "Do not auto-mount binfmt_misc inside containers. With this set, the kernel's load_binfmt_misc walks the user-namespace parent chain and inherits the host's binfmt_misc registrations (kernel >= 6.7). Useful on Kubernetes 1.33+ with hostUsers:false, where the per-userns binfmt_misc mount is read-only (containerd's pause container has Root.Readonly=true) and the auto-mounted instance shadows the host's registrations — breaking QEMU cross-arch emulation inside the pod. Mutually exclusive with --mirror-host-binfmt-misc. (default = false)",
+		},
+		cli.BoolFlag{
+			Name:  "mirror-host-binfmt-misc",
+			Usage: "Mirror the host's binfmt_misc qemu-* registrations into each sysbox container's per-userns binfmt_misc instance via a sysbox-runc-injected OCI prestart hook, then remount the in-container instance as read-only. Net effect: containers get working cross-arch QEMU emulation via in-pod registrations identical to the host's, AND in-pod attempts to overwrite the registrations (e.g., docker/setup-qemu-action running tonistiigi/binfmt --install) fail with EROFS instead of clobbering with bad flags. Requires sysbox-runc with matching hook-injection support. Mutually exclusive with --disable-binfmt-misc-mount. (default = false)",
 		},
 	}
 
@@ -227,6 +231,25 @@ func main() {
 		profile, err := runProfiler(ctx)
 		if err != nil {
 			return err
+		}
+
+		// Validate mutually-exclusive binfmt flags before anything else.
+		if ctx.GlobalBool("disable-binfmt-misc-mount") && ctx.GlobalBool("mirror-host-binfmt-misc") {
+			return fmt.Errorf("--disable-binfmt-misc-mount and --mirror-host-binfmt-misc are mutually exclusive")
+		}
+
+		// Stage (or clear) the binfmt-mirror sentinel BEFORE newSysboxMgr,
+		// so that any container created between sysbox-mgr coming up and
+		// the first reconcile already sees the correct state. Removal
+		// (when the flag is off) drops any stale conf from a previous
+		// boot — without this, sysbox-runc would keep injecting the
+		// hook based on stale state.
+		if ctx.GlobalBool("mirror-host-binfmt-misc") {
+			if err := setupBinfmtMirror(); err != nil {
+				return fmt.Errorf("failed to stage host binfmt mirror: %v", err)
+			}
+		} else {
+			removeBinfmtMirror()
 		}
 
 		mgr, err := newSysboxMgr(ctx)
