@@ -2,7 +2,7 @@
 //
 // binfmt_mirror.go implements the --mirror-host-binfmt-misc startup
 // behavior: read the host's binfmt_misc qemu-* registrations and write
-// them as a sentinel + replay-conf at /var/lib/sysbox/binfmt-mirror.conf.
+// them as a sentinel + replay-conf at /run/sysbox-binfmt-mirror.conf.
 // sysbox-runc detects the sentinel and injects an OCI prestart hook
 // (sysbox-binfmt-mirror.sh) into every sysbox container spec; the hook
 // replays each entry into the container's per-userns binfmt_misc, then
@@ -12,9 +12,17 @@
 // sysbox-mgr→sysbox-runc gRPC config to carry binfmt entries) would
 // require lockstep version bumps of sysbox-ipc too. The file approach
 // keeps each component independently deployable — sysbox-runc just
-// checks for `/var/lib/sysbox/binfmt-mirror.conf` existence and any
+// checks for `/run/sysbox-binfmt-mirror.conf` existence and any
 // content changes are picked up on the NEXT container creation without
 // restarting sysbox-runc or sysbox-mgr.
+//
+// Why /run/ (not /var/lib/sysbox/): sysbox-mgr's setupWorkDirs() at
+// startup does os.RemoveAll(sysboxLibDir) before re-creating its data
+// root subdirs, which would wipe any conf file we wrote at /var/lib/
+// sysbox/. /run/ is tmpfs (cleared on reboot, which is fine — we
+// regenerate the conf on every sysbox-mgr start anyway), outside
+// sysbox-mgr's managed dirs, and the standard location for runtime
+// state on Linux.
 
 package main
 
@@ -29,8 +37,8 @@ import (
 
 const (
 	binfmtHostDir     = "/proc/sys/fs/binfmt_misc"
-	binfmtMirrorDir   = "/var/lib/sysbox"
-	binfmtMirrorFile  = "binfmt-mirror.conf"
+	binfmtMirrorDir   = "/run"
+	binfmtMirrorFile  = "sysbox-binfmt-mirror.conf"
 	binfmtEntryPrefix = "qemu-"
 )
 

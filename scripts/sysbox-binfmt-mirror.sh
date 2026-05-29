@@ -28,7 +28,7 @@
 
 set -uo pipefail
 
-CONF=/var/lib/sysbox/binfmt-mirror.conf
+CONF=/run/sysbox-binfmt-mirror.conf
 LOG_TAG="sysbox-binfmt-mirror"
 
 log() { echo "${LOG_TAG}: $*" >&2; }
